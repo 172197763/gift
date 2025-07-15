@@ -44,6 +44,7 @@ class GiftController extends Controller
             if (empty($giftInfo)) {
                 return responseError([0, '所选礼物不存在，无法赠送']);
             }
+            //-。-缓存缺少过期时间,礼物信息永不过期问题
             RedisHelper::set($giftkey, json_encode($giftInfo));
         }
 
@@ -61,11 +62,15 @@ class GiftController extends Controller
 
         # 校验用户币余额是否充足
         $userCoinBalance = User::query()->where(['id' => $uid])->value('coin');
+        //-。-并发会导致检测余额是否充足有问题，导致不满足条件的请求进入后续逻辑
         if ($userCoinBalance < $giftTotalNeedCoin) {
             return responseError(ApiStatus::PLATFORM_COIN_INSUFFICIENT);
         }
 
         try {
+            //-。-循环执行数据库大事务，随着to_uid元素增多，会大大耗时耗资源。
+            //-。-面向前端的接口不该在循环中数据库操作
+            //-。-把事务拆分，减少实务中的逻辑，非必要逻辑解耦，根据具体情况另外处理
             foreach ($to_uid as $v) {
                 # 赠送礼物
                 GiftRepository::Factory()->doGiveGroupGift($uid, $v, $giftInfo, $scene, $scene_id, $number_group, $eachUserGiftCoin, $giftUnitCoin);
